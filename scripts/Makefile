@@ -199,6 +199,7 @@ $(BUILDDIR)/image-prepare-stamp:
 	@mkdir -p /rootfs/
 	@curl -L -s https://sophgo.my-ho.st:8443/public-key.asc -o $(BUILDDIR)/public-key.asc
 	@apt-key add $(BUILDDIR)/public-key.asc
+	@update-binfmts --enable qemu-riscv64
 	@mmdebstrap -v --architectures=riscv64 --include="$(_PACKAGES)" sid "/rootfs/" "deb http://deb.debian.org/debian/ sid main" "deb https://sophgo.my-ho.st:8443/ debian sophgo"
 	@touch $@
 
