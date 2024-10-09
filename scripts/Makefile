@@ -8,6 +8,7 @@ blue:=$(shell tput setaf 4)
 reset:=$(shell tput sgr0)
 
 BUILDDIR := /build/
+BUILD_SOURCE_DIR := $(BUILDDIR)/build-source/
 
 ifndef BOARD
 $(error $(red)BOARD is not set$(reset))
@@ -38,7 +39,7 @@ NPROCS := $(shell nproc)
 $(BUILDDIR)/linux-prepare-checkout-stamp:
 	@echo "$(COLOUR_GREEN)Checking out Kernel for $(BOARD)$(END_COLOUR)"
 	@mkdir -p $(BUILDDIR)
-	@git clone -b sg200x-dev --depth 5 https://github.com/sophgo/linux_5.10.git /build/kernel
+	@git clone -b sg200x-dev --depth 6 https://github.com/sophgo/linux_5.10.git /build/kernel
 	@cd $(BUILDDIR)/kernel && git checkout 8b8fbf8
 	@touch $@
 
@@ -76,120 +77,90 @@ linux-clean:
 	@rm -f $(BUILDDIR)/linux-*.deb
 
 
-$(BUILDDIR)/uboot-prepare-checkout-stamp:
-	@echo "$(COLOUR_GREEN)Checking out U-Boot for $(BOARD)$(END_COLOUR)"
-	@mkdir -p $(BUILDDIR)
-	@git clone --depth 1 https://github.com/milkv-duo/u-boot-2021.10.git $(BUILDDIR)/u-boot
-	@cd $(BUILDDIR)/u-boot && git checkout a57aa1f
-	@touch $@
-
-$(BUILDDIR)/uboot-prepare-patch-stamp: $(BUILDDIR)/uboot-prepare-checkout-stamp
+$(BUILDDIR)/uboot-prepare-patch-stamp:
 	@echo "$(COLOUR_GREEN)Patching U-Boot for $(BOARD)$(END_COLOUR)"
-	@$(foreach file, $(wildcard /configs/common/patches/u-boot/*.patch), cd $(BUILDDIR)/u-boot && git apply --ignore-whitespace $(file);)
-	@$(foreach file, $(wildcard /configs/$(BOARD)/patches/u-boot/*.patch), cd $(BUILDDIR)/u-boot && git apply --ignore-whitespace $(file);)
-	@cp /configs/$(BOARD)/u-boot/defconfig $(BUILDDIR)/u-boot/configs/$(BOARD)_defconfig
-	@$(foreach file, $(wildcard /configs/common/dts/$(CHIP)/*), cp $(file) $(BUILDDIR)/u-boot/arch/riscv/dts/;)
-	@$(foreach file, $(wildcard /configs/common/dts/$(CHIP)_$(ARCH)/*), cp $(file) $(BUILDDIR)/u-boot/arch/riscv/dts/;)
-	@$(foreach file, $(wildcard /configs/$(BOARD)/dts/*), cp $(file) $(BUILDDIR)/u-boot/arch/riscv/dts/;)
-	@cp /configs/$(BOARD)/u-boot/cvitek.h $(BUILDDIR)/u-boot/include/cvitek.h
-	@cp /configs/$(BOARD)/u-boot/cvi_board_init.c $(BUILDDIR)/u-boot/board/cvitek/cvi_board_init.c
-	@python3 /builder/python/mmap_conv.py --type h /configs/$(BOARD)/memmap.py $(BUILDDIR)/u-boot/include/cvi_board_memmap.h
-	@python3 /builder/python/mkcvipart.py /configs/$(BOARD)/$(PARTITION_FILE) $(BUILDDIR)/u-boot/include/
-	@python3 /builder/python/mk_imgHeader.py /configs/$(BOARD)/$(PARTITION_FILE) $(BUILDDIR)/u-boot/include/ 
+	# @$(foreach file, $(wildcard /configs/common/patches/u-boot/*.patch), cd $(BUILD_SOURCE_DIR)/u-boot-2021.10 && git apply --ignore-whitespace $(file);)
+	# @$(foreach file, $(wildcard /configs/$(BOARD)/patches/u-boot/*.patch), cd $(BUILD_SOURCE_DIR)/u-boot-2021.10 && git apply --ignore-whitespace $(file);)
+	@cp /configs/$(BOARD)/u-boot/defconfig $(BUILD_SOURCE_DIR)/u-boot-2021.10/configs/$(BOARD)_defconfig
+	@$(foreach file, $(wildcard /configs/common/dts/$(CHIP)/*), cp $(file) $(BUILD_SOURCE_DIR)/u-boot-2021.10/arch/riscv/dts/;)
+	@$(foreach file, $(wildcard /configs/common/dts/$(CHIP)_$(ARCH)/*), cp $(file) $(BUILD_SOURCE_DIR)/u-boot-2021.10/arch/riscv/dts/;)
+	@$(foreach file, $(wildcard /configs/$(BOARD)/dts/*), cp $(file) $(BUILD_SOURCE_DIR)/u-boot-2021.10/arch/riscv/dts/;)
+	@cp /configs/$(BOARD)/u-boot/cvitek.h $(BUILD_SOURCE_DIR)/u-boot-2021.10/include/cvitek.h
+	@cp /configs/$(BOARD)/u-boot/cvi_board_init.c $(BUILD_SOURCE_DIR)/u-boot-2021.10/board/cvitek/cvi_board_init.c
+	@python3 /builder/python/mmap_conv.py --type h /configs/$(BOARD)/memmap.py $(BUILD_SOURCE_DIR)/u-boot-2021.10/include/cvi_board_memmap.h
+	@python3 /builder/python/mkcvipart.py /configs/$(BOARD)/$(PARTITION_FILE) $(BUILD_SOURCE_DIR)/u-boot-2021.10/include/
+	@python3 /builder/python/mk_imgHeader.py /configs/$(BOARD)/$(PARTITION_FILE) $(BUILD_SOURCE_DIR)/u-boot-2021.10/include/ 
 	@touch $@
 
 $(BUILDDIR)/uboot-prepare-configure-stamp: $(BUILDDIR)/uboot-prepare-patch-stamp
 	@echo "$(COLOUR_GREEN)Configuring U-Boot for $(BOARD)$(END_COLOUR)"
-	@cd $(BUILDDIR)/u-boot/ && $(MAKE) -j$(NPROCS) BOARD=mars CONFIG_USE_DEFAULT_ENV=y STORAGE_TYPE=$(STORAGE_TYPE) CHIP=$(UBOOT_CHIP) CVIBOARD=$(UBOOT_BOARD) CROSS_COMPILE="/host-tools/gcc/riscv64-linux-musl-x86_64/bin/riscv64-unknown-linux-musl-" $(BOARD)_defconfig
+	@cd $(BUILD_SOURCE_DIR)/u-boot-2021.10 && $(MAKE) -j$(NPROCS) BOARD=mars CONFIG_USE_DEFAULT_ENV=y STORAGE_TYPE=$(STORAGE_TYPE) CHIP=$(UBOOT_CHIP) CVIBOARD=$(UBOOT_BOARD) CROSS_COMPILE="/host-tools/gcc/riscv64-linux-musl-x86_64/bin/riscv64-unknown-linux-musl-" $(BOARD)_defconfig
 	@touch $@
 
 $(BUILDDIR)/uboot-compile-stamp: $(BUILDDIR)/uboot-prepare-configure-stamp
 	@echo "$(COLOUR_GREEN)Building U-Boot for $(BOARD)$(END_COLOUR)"
-	@cd $(BUILDDIR)/u-boot/ && $(MAKE) -j$(NPROCS) BOARD=mars CONFIG_USE_DEFAULT_ENV=y STORAGE_TYPE=$(STORAGE_TYPE) CHIP=$(UBOOT_CHIP) CVIBOARD=$(UBOOT_BOARD) CROSS_COMPILE="/host-tools/gcc/riscv64-linux-musl-x86_64/bin/riscv64-unknown-linux-musl-"
-	@cd $(BUILDDIR)/u-boot/ && $(MAKE) -j$(NPROCS) BOARD=mars CONFIG_USE_DEFAULT_ENV=y STORAGE_TYPE=$(STORAGE_TYPE) CHIP=$(UBOOT_CHIP) CVIBOARD=$(UBOOT_BOARD) CROSS_COMPILE="/host-tools/gcc/riscv64-linux-musl-x86_64/bin/riscv64-unknown-linux-musl-" u-boot-initial-env
-	@cp $(BUILDDIR)/u-boot/u-boot.bin $(BUILDDIR)
-	@cp $(BUILDDIR)/u-boot/u-boot.dtb $(BUILDDIR)
-	@cp $(BUILDDIR)/u-boot/u-boot-initial-env $(BUILDDIR)
+	@cd $(BUILD_SOURCE_DIR)/u-boot-2021.10/ && $(MAKE) -j$(NPROCS) BOARD=mars CONFIG_USE_DEFAULT_ENV=y STORAGE_TYPE=$(STORAGE_TYPE) CHIP=$(UBOOT_CHIP) CVIBOARD=$(UBOOT_BOARD) CROSS_COMPILE="/host-tools/gcc/riscv64-linux-musl-x86_64/bin/riscv64-unknown-linux-musl-"
+	@cd $(BUILD_SOURCE_DIR)/u-boot-2021.10/ && $(MAKE) -j$(NPROCS) BOARD=mars CONFIG_USE_DEFAULT_ENV=y STORAGE_TYPE=$(STORAGE_TYPE) CHIP=$(UBOOT_CHIP) CVIBOARD=$(UBOOT_BOARD) CROSS_COMPILE="/host-tools/gcc/riscv64-linux-musl-x86_64/bin/riscv64-unknown-linux-musl-" u-boot-initial-env
+	@cp $(BUILD_SOURCE_DIR)/u-boot-2021.10/u-boot.bin $(BUILD_SOURCE_DIR)
+	@cp $(BUILD_SOURCE_DIR)/u-boot-2021.10/u-boot.dtb $(BUILD_SOURCE_DIR)
+	@cp $(BUILD_SOURCE_DIR)/u-boot-2021.10/u-boot-initial-env $(BUILD_SOURCE_DIR)
 	@touch $@
 
 uboot: $(BUILDDIR)/uboot-compile-stamp
 
-uboot-clean:
-	@rm -rf $(BUILDDIR)/u-boot
-	@rm -f $(BUILDDIR)/uboot-*-stamp
 
-
-$(BUILDDIR)/opensbi-prepare-checkout-stamp:
-	@echo "$(COLOUR_GREEN)Checking out OpenSBI for $(BOARD)$(END_COLOUR)"
-	@mkdir -p $(BUILDDIR)
-	@git clone -b sg200x-dev --depth 1 https://github.com/sophgo/opensbi.git $(BUILDDIR)/opensbi
-	@cd $(BUILDDIR)/opensbi && git checkout 216793f
-#	git clone https://github.com/riscv-software-src/opensbi.git $(BUILDDIR)/opensbi
-#	@cd $(BUILDDIR)/opensbi && git checkout a2b255b
-	@touch $@
-
-
-$(BUILDDIR)/opensbi-prepare-patch-stamp: $(BUILDDIR)/opensbi-prepare-checkout-stamp
+$(BUILDDIR)/opensbi-prepare-patch-stamp:
 	@echo "$(COLOUR_GREEN)Patching OpenSBI for $(BOARD)$(END_COLOUR)"
-	@$(foreach file, $(wildcard /configs/common/patches/opensbi/*.patch), cd $(BUILDDIR)/opensbi && git apply --ignore-whitespace $(file);)
-	@$(foreach file, $(wildcard /configs/$(BOARD)/patches/opensbi/*.patch), cd $(BUILDDIR)/opensbi && git apply --ignore-whitespace $(file);)
+	@$(foreach file, $(wildcard /configs/common/patches/opensbi/*.patch), cd $(BUILD_SOURCE_DIR)/opensbi && git apply --ignore-whitespace $(file);)
+	@$(foreach file, $(wildcard /configs/$(BOARD)/patches/opensbi/*.patch), cd $(BUILD_SOURCE_DIR)/opensbi && git apply --ignore-whitespace $(file);)
 	@touch $@
 
 $(BUILDDIR)/opensbi-compile-stamp: $(BUILDDIR)/opensbi-prepare-patch-stamp $(BUILDDIR)/uboot-compile-stamp
 	@echo "$(COLOUR_GREEN)Building OpenSBI for $(BOARD)$(END_COLOUR)"
-	@cd $(BUILDDIR)/opensbi && CROSS_COMPILE="/host-tools/gcc/riscv64-linux-musl-x86_64/bin/riscv64-unknown-linux-musl-" make PLATFORM=generic FW_FDT_PATH=$(BUILDDIR)/u-boot.dtb
-	@cp $(BUILDDIR)/opensbi/build/platform/generic/firmware/fw_dynamic.bin $(BUILDDIR)
+	@cd $(BUILD_SOURCE_DIR)/opensbi && CROSS_COMPILE="/host-tools/gcc/riscv64-linux-musl-x86_64/bin/riscv64-unknown-linux-musl-" make PLATFORM=generic FW_FDT_PATH=$(BUILD_SOURCE_DIR)/u-boot.dtb
+	@cp $(BUILD_SOURCE_DIR)/opensbi/build/platform/generic/firmware/fw_dynamic.bin $(BUILD_SOURCE_DIR)
 	@touch $@
 
 opensbi: $(BUILDDIR)/opensbi-compile-stamp
 
-opensbi-clean:
-	@rm -rf $(BUILDDIR)/opensbi
-	@rm -f $(BUILDDIR)/opensbi-*-stamp
 
-
-$(BUILDDIR)/fsbl-prepare-checkout-stamp:
-	@echo "$(COLOUR_GREEN)Checking out FSBL for $(BOARD)$(END_COLOUR)"
-	@mkdir -p $(BUILDDIR)
-	@git clone -b milkv --depth 1 https://github.com/milkv-duo/fsbl.git $(BUILDDIR)/fsbl
-	@cd $(BUILDDIR)/fsbl && git checkout beb1483
-	@touch $@
-
-$(BUILDDIR)/fsbl-prepare-patch-stamp: $(BUILDDIR)/fsbl-prepare-checkout-stamp
+$(BUILDDIR)/fsbl-prepare-patch-stamp: $(BUILDDIR)/source-repo-checkout-stamp
 	@echo "$(COLOUR_GREEN)Patching FSBL for $(BOARD)$(END_COLOUR)"
-	@$(foreach file, $(wildcard /configs/common/patches/fsbl/*.patch), cd $(BUILDDIR)/fsbl && git apply --ignore-whitespace $(file);)
-	@$(foreach file, $(wildcard /configs/$(BOARD)/patches/fsbl/*.patch), cd $(BUILDDIR)/fsbl && git apply --ignore-whitespace $(file);)
-	@python3 /builder/python/mmap_conv.py --type h /configs/$(BOARD)/memmap.py $(BUILDDIR)/fsbl/plat/$(CHIP)/include/cvi_board_memmap.h
-	@printf '\163\000\120\020\157\360\337\377' > $(BUILDDIR)/fsbl/blank.bin
+	@$(foreach file, $(wildcard /configs/common/patches/fsbl/*.patch), cd $(BUILD_SOURCE_DIR)/fsbl && git apply --ignore-whitespace $(file);)
+	@$(foreach file, $(wildcard /configs/$(BOARD)/patches/fsbl/*.patch), cd $(BUILD_SOURCE_DIR)/fsbl && git apply --ignore-whitespace $(file);)
+	@python3 /builder/python/mmap_conv.py --type h /configs/$(BOARD)/memmap.py $(BUILD_SOURCE_DIR)/fsbl/plat/$(CHIP)/include/cvi_board_memmap.h
+	@printf '\163\000\120\020\157\360\337\377' > $(BUILD_SOURCE_DIR)/fsbl/blank.bin
 	@touch $@
 
 $(BUILDDIR)/fsbl-compile-stamp: $(BUILDDIR)/fsbl-prepare-patch-stamp $(BUILDDIR)/opensbi-compile-stamp $(BUILDDIR)/uboot-compile-stamp
 	@echo "$(COLOUR_GREEN)Building FSBL for $(BOARD)$(END_COLOUR)"
-	@cd $(BUILDDIR)/fsbl && OD_CLK_SEL=y $(MAKE) -j$(NPROCS) ARCH=$(ARCH) CHIP_ARCH=$(CHIP) BOOT_CPU=$(BOOT_CPU) DDR_CFG=$(DDR_CFG) RTOS_ENABLE_FREERTOS=y BLCP_2ND_PATH=$(BUILDDIR)/fsbl/blank.bin LOADER_2ND_PATH=$(BUILDDIR)/u-boot.bin \
+	@cd $(BUILD_SOURCE_DIR)/fsbl && OD_CLK_SEL=y $(MAKE) -j$(NPROCS) ARCH=$(ARCH) CHIP_ARCH=$(CHIP) BOOT_CPU=$(BOOT_CPU) DDR_CFG=$(DDR_CFG) RTOS_ENABLE_FREERTOS=y BLCP_2ND_PATH=$(BUILD_SOURCE_DIR)/fsbl/blank.bin LOADER_2ND_PATH=$(BUILD_SOURCE_DIR)/u-boot.bin \
     CROSS_COMPILE=/host-tools/gcc/riscv64-linux-musl-x86_64/bin/riscv64-unknown-linux-musl- 
-	@cp $(BUILDDIR)/fsbl/build/$(CHIP)/fip.bin $(BUILDDIR)
+	@cp $(BUILD_SOURCE_DIR)/fsbl/build/$(CHIP)/fip.bin $(BUILD_SOURCE_DIR)
 	@touch $@
 
 $(BUILDDIR)/fsbl-package-stamp: $(BUILDDIR)/fsbl-compile-stamp
 	@echo "$(COLOUR_GREEN)Packaging FSBL for $(BOARD)$(END_COLOUR)"
-	@mkdir -p $(BUILDDIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)
-	@cp -r /builder/deb/cvitek-fsbl/* $(BUILDDIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/
-	@mkdir -p $(BUILDDIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/boot/ $(BUILDDIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/etc/
-	@cp $(BUILDDIR)/fip.bin $(BUILDDIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/boot/
-	@cp $(BUILDDIR)/u-boot-initial-env $(BUILDDIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/etc/
-	@sed -i 's/Version: 1.0.0/Version: $(FSBLVERSION)/' $(BUILDDIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/DEBIAN/control
-	@sed -i 's/Package: cvitek-fsbl/Package: cvitek-fsbl-$(BOARD)/' $(BUILDDIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/DEBIAN/control
-	@cd $(BUILDDIR)/package/ && dpkg-deb --build cvitek-fsbl-$(BOARD)-$(FSBLVERSION)
-	@cp $(BUILDDIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION).deb /output/
+	@mkdir -p $(BUILD_SOURCE_DIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)
+	@cp -r /builder/deb/cvitek-fsbl/* $(BUILD_SOURCE_DIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/
+	@mkdir -p $(BUILD_SOURCE_DIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/boot/ $(BUILD_SOURCE_DIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/etc/
+	@cp $(BUILD_SOURCE_DIR)/fip.bin $(BUILD_SOURCE_DIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/boot/
+	@cp $(BUILD_SOURCE_DIR)/u-boot-initial-env $(BUILD_SOURCE_DIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/etc/
+	@sed -i 's/Version: 1.0.0/Version: $(FSBLVERSION)/' $(BUILD_SOURCE_DIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/DEBIAN/control
+	@sed -i 's/Package: cvitek-fsbl/Package: cvitek-fsbl-$(BOARD)/' $(BUILD_SOURCE_DIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION)/DEBIAN/control
+	@cd $(BUILD_SOURCE_DIR)/package/ && dpkg-deb --build cvitek-fsbl-$(BOARD)-$(FSBLVERSION)
+	@cp $(BUILD_SOURCE_DIR)/package/cvitek-fsbl-$(BOARD)-$(FSBLVERSION).deb /output/
 	@touch $@
 
 fsbl: $(BUILDDIR)/fsbl-package-stamp
 
-fsbl-clean:
-	@rm -rf $(BUILDDIR)/fsbl
-	@rm -rf $(BUILDDIR)/package/cvitek-fsbl-*
-	@rm -f $(BUILDDIR)/fsbl-*-stamp
 
+$(BUILDDIR)/source-repo-checkout-stamp:
+	@echo "$(COLOUR_GREEN)Checking out main repo for $(BOARD)$(END_COLOUR)"
+	@mkdir -p $(BUILDDIR)
+	@git clone --depth 1 https://github.com/sipeed/LicheeRV-Nano-Build.git $(BUILD_SOURCE_DIR)
+	@cd $(BUILD_SOURCE_DIR) $$ git checkout a0dd574
+	@touch $@
 
 $(BUILDDIR)/image-prepare-stamp: 
 	@echo "$(COLOUR_GREEN)Preparing Image for $(BOARD)$(END_COLOUR)"
@@ -212,7 +183,7 @@ $(BUILDDIR)/image-addons-stamp: $(BUILDDIR)/image-prepare-stamp $(BUILDDIR)/fsbl
 	@touch $@
 
 
-$(BUILDDIR)/image-customize-stamp: $(BUILDDIR)/image-addons-stamp $(BUILDDIR)/linux-compile-stamp $(BUILDDIR)/fsbl-package-stamp
+$(BUILDDIR)/image-customize-stamp: $(BUILDDIR)/image-addons-stamp $(BUILDDIR)/linux-compile-stamp $(BUILDDIR)/source-repo-checkout-stamp $(BUILDDIR)/fsbl-package-stamp
 	@echo "$(COLOUR_GREEN)Customizing Image for $(BOARD)$(END_COLOUR)"
 	@mkdir -p /rootfs/tmp/install/
 	@echo $(BOARD) > /rootfs/tmp/install/hostname
